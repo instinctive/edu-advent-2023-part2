@@ -8,7 +8,7 @@ import Control.Lens
 import Data.Array ((!), Array, listArray)
 import Data.Map (Map)
 import Data.Text (Text)
-import Text.Megaparsec hiding (parse)
+import Text.Megaparsec hiding (parse, count)
 import Text.Megaparsec.Char
 import qualified Data.Map as M
 import qualified Data.IntSet as IS
@@ -29,15 +29,6 @@ instance Semigroup Range where
 allRange = Range 1 4001
 checkRange (Range lo hi) = lo < hi
 countRange (Range lo hi) = max 0 (hi - lo)
-inRange x (Range lo hi) = lo <= x && x < hi
-subtractRange orig@(Range lo hi) (Range xlo xhi)
-    | xlo >= hi = [orig]
-    | xhi <= lo = [orig]
-    | xlo <= lo && xhi >= hi = []
-    | xlo <= lo = [orig & hiRange .~ xhi]
-    | xhi >= hi = [orig & loRange .~ xlo]
-    | otherwise = [orig & hiRange .~ xlo, orig & loRange .~ xhi]
-isSubRange (Range a b) (Range u v) = a >= u && b <= v
 -- }}}
 
 data Bounds = Bounds { _xBound, _mBound, _aBound, _sBound :: !Range } -- {{{
@@ -51,25 +42,14 @@ instance Monoid Bounds where
 allBounds = Bounds allRange allRange allRange allRange
 checkBounds (Bounds x m a s) = checkRange x && checkRange m && checkRange a && checkRange s
 countBounds (Bounds x m a s) = countRange x * countRange m * countRange a * countRange s
-inBounds (x,m,a,s) (Bounds xx mm aa ss) =
-    inRange x xx &&
-    inRange m mm &&
-    inRange a aa &&
-    inRange s ss
-subtractBounds (Bounds a b c d) (Bounds w x y z) =
-    Bounds <$> subtractRange a w
-           <*> subtractRange b x
-           <*> subtractRange c y
-           <*> subtractRange d z
-isSubBounds (Bounds a b c d) (Bounds w x y z) =
-    isSubRange a w &&
-    isSubRange b x &&
-    isSubRange c y &&
-    isSubRange d z
+splitBounds l v b
+    | b^.runLens l.loRange >= v = ([],[b])
+    | b^.runLens l.hiRange <= v = ([b],[])
+    | otherwise = ([b & runLens l.hiRange .~ v],[b & runLens l.loRange .~ v])
 -- }}}
 
-test :: Xmas -> Ordering -> Int -> (Bounds, Bounds) -- {{{
-test x o v = case o of
+runTest :: Xmas -> Ordering -> Int -> (Bounds, Bounds) -- {{{
+runTest x o v = case o of
     LT -> ( allBounds & l x . hiRange .~ v
           , allBounds & l x . loRange .~ v )
     GT -> ( allBounds & l x . loRange .~ v+1
@@ -123,40 +103,42 @@ pRule = try cond <|> fmap Name pName where
         pure $ Test k op v l
 -- }}}
 
-type Ans = Map Text [Bounds]
-
 main = do
     flows <- getContents <&> map parse . takeWhile (/="") . lines
     let m = M.fromList $ second (validFlow m) <$> flows
     let bb = m M.! (T.pack "in")
-    -- traverse_ print bb
-    print $ sum $ map countBounds $ filter (pred bb) $
-        Bounds <$> ranges bb xBound
-               <*> ranges bb mBound
-               <*> ranges bb aBound
-               <*> ranges bb sBound
-  where
-    pred bb b = any (isSubBounds b) bb
+    print $ count bb
+        [ values bb $ Lens xBound
+        , values bb $ Lens mBound
+        , values bb $ Lens aBound
+        , values bb $ Lens sBound
+        ]
 
-ranges bb l = zipWith Range vv (tail vv) where
+count [] _ = 0
+count [b] _ = countBounds b
+count bb ((_,[_,_]):rr) = count bb rr
+count bb ((l,vv):rr) =
+    count bblo (rr <> [(l,xx <> [w])]) +
+    count bbhi (rr <> [(l,w:yy)])
+  where
+    (bblo,bbhi) = bimap concat concat $ unzip $ splitBounds l w <$> bb
+    (xx,w:yy) = splitAt (length vv `div` 2) vv
+
+values bb l = (l, vv) where
     vv = IS.toList . IS.fromList $
-        (bb ^.. each.l.loRange) <>
-        (bb ^.. each.l.hiRange)
+        (bb ^.. each.runLens l.loRange) <>
+        (bb ^.. each.runLens l.hiRange)
 
 isect :: Bounds -> Bounds -> Maybe Bounds
 isect a b = a <> b & bool Nothing . Just <*> checkBounds
 
-validName :: Ans -> Name -> [Bounds]
--- validName m q | traceShow ("validName",q) False = undefined
 validName m Accept = [allBounds]
 validName m Reject = []
 validName m (Text text) = m M.! text
 
-validFlow :: Ans -> Flow -> [Bounds]
--- validFlow m qq | traceShow qq False = undefined
 validFlow m [Name name] = validName m name
 validFlow m (Test x o v name : more) = catMaybes $
     ( isect succ <$> validName m name ) <>
     ( isect fail <$> validFlow m more )
   where
-    (succ,fail) = test x o v
+    (succ,fail) = runTest x o v
