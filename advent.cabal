@@ -1,0 +1,69 @@
+cabal-version: 3.0
+name: advent
+version: 0.1.0.0
+
+common shared
+  mixins:
+    , base hiding (Prelude)
+    , base-prelude (BasePrelude as Prelude)
+  ghc-options: -O2
+  default-language: Haskell2010
+  default-extensions:
+    , BangPatterns
+    , BlockArguments
+    , LambdaCase
+    , TupleSections
+    , TypeApplications
+    , RecordWildCards
+    , ViewPatterns
+  build-depends: base, base-prelude
+
+library
+  import: shared
+  exposed-modules: Hello
+
+executable day12
+  import: shared
+  main-is: day12.hs
+  build-depends:
+    , containers
+    , mtl
+    , split
+
+executable day14
+  import: shared
+  main-is: day14.hs
+  build-depends:
+    , array
+    , containers
+    , lens
+    , linear
+    , mtl
+
+executable day18
+  import: shared
+  main-is: day18.hs
+  build-depends:
+    , containers
+    , lens
+    , linear
+
+executable day19
+  import: shared
+  main-is: day19.hs
+  build-depends:
+    , array
+    , containers
+    , lens
+    , megaparsec
+    , text
+
+executable day20
+  import: shared
+  main-is: day20.hs
+  build-depends:
+    , array
+    , containers
+    , lens
+    , megaparsec
+    , text
