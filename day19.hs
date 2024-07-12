@@ -107,12 +107,14 @@ main = do
     flows <- getContents <&> map parse . takeWhile (/="") . lines
     let m = M.fromList $ second (validFlow m) <$> flows
     let bb = m M.! (T.pack "in")
-    print $ count bb
-        [ values bb $ Lens xBound
-        , values bb $ Lens mBound
-        , values bb $ Lens aBound
-        , values bb $ Lens sBound
-        ]
+    print $ sum $ countBounds <$> bb
+    -- not necessary as there can be no overlaps at this point!
+    -- print $ count bb
+    --     [ values bb $ Lens xBound
+    --     , values bb $ Lens mBound
+    --     , values bb $ Lens aBound
+    --     , values bb $ Lens sBound
+    --     ]
 
 count [] _ = 0
 count [b] _ = countBounds b
